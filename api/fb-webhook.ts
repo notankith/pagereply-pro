@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMongoClient } from './lib/mongodb';
-import { handleCors, jsonResponse, errorResponse } from './lib/cors';
+import { getMongoClient } from './lib/mongodb.js';
+import { handleCors, jsonResponse, errorResponse } from './lib/cors.js';
 
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || 'replybot_verify_token';
 

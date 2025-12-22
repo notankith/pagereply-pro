@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMongoClient, ObjectId } from './lib/mongodb';
-import { handleCors, jsonResponse, errorResponse } from './lib/cors';
+import { getMongoClient, ObjectId } from './lib/mongodb.js';
+import { handleCors, jsonResponse, errorResponse } from './lib/cors.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;

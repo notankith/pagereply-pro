@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMongoClient, ObjectId } from './lib/mongodb';
-import { handleCors, jsonResponse, errorResponse } from './lib/cors';
+import { getMongoClient, ObjectId } from './lib/mongodb.js';
+import { handleCors, jsonResponse, errorResponse } from './lib/cors.js';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
