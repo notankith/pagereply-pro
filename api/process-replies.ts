@@ -1,42 +1,24 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { MongoClient } from "https://deno.land/x/mongo@v0.32.0/mod.ts";
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getMongoClient, ObjectId } from './lib/mongodb';
+import { handleCors, jsonResponse, errorResponse } from './lib/cors';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-
-// MongoDB connection
-async function getMongoClient() {
-  const uri = Deno.env.get('MONGODB_URI');
-  if (!uri) throw new Error('MONGODB_URI not configured');
-  
-  const client = new MongoClient();
-  await client.connect(uri);
-  return client;
-}
-
-// Classify comment as short or deep
 function isShortComment(message: string, thresholdWords = 6, thresholdChars = 40): boolean {
   const wordCount = message.trim().split(/\s+/).length;
   const charCount = message.length;
   return wordCount <= thresholdWords || charCount < thresholdChars;
 }
 
-// Get random emoji reply
 function getEmojiReply(): string {
   const emojis = ['❤️', '🙌', '👏', '🔥', '💯', '✨', '👍', '😊', '🎉', '💪'];
   return emojis[Math.floor(Math.random() * emojis.length)];
 }
 
-// Generate AI reply using OpenAI
-async function generateAIReply(comment: string, settings: any): Promise<string> {
-  const systemPrompt = settings?.aiTone || 
+async function generateAIReply(comment: string, settings: Record<string, unknown>): Promise<string> {
+  const systemPrompt = (settings?.aiTone as string) ||
     "You are a friendly and helpful social media manager. Respond to comments in a warm, professional manner. Keep responses concise but engaging. Never be defensive or argumentative. Keep your response under 100 words.";
-  
+
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -47,61 +29,62 @@ async function generateAIReply(comment: string, settings: any): Promise<string> 
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Reply to this Facebook comment: "${comment}"` }
+        { role: 'user', content: `Reply to this Facebook comment: "${comment}"` },
       ],
       max_tokens: 150,
       temperature: 0.7,
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.text();
     console.error('OpenAI API error:', error);
     throw new Error(`OpenAI API error: ${response.status}`);
   }
-  
+
   const data = await response.json();
   return data.choices[0].message.content.trim();
 }
 
-// Post reply to Facebook
 async function postReply(pageAccessToken: string, commentId: string, message: string): Promise<string> {
   const response = await fetch(
     `https://graph.facebook.com/v18.0/${commentId}/comments`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
         access_token: pageAccessToken,
       }),
     }
   );
-  
+
   if (!response.ok) {
     const error = await response.text();
     console.error('Facebook API error:', error);
     throw new Error(`Facebook API error: ${response.status}`);
   }
-  
+
   const data = await response.json();
-  return data.id; // Return the reply comment ID
+  return data.id;
 }
 
-// Random delay between min and max seconds
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function randomDelay(minSeconds: number, maxSeconds: number): Promise<void> {
-  const delay = Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
-  return new Promise(resolve => setTimeout(resolve, delay));
+  const ms = Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
+  return delay(ms);
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (handleCors(req, res)) return;
+
+  if (req.method !== 'POST') {
+    return errorResponse(res, 'Method not allowed', 405);
   }
-  
-  let client;
+
   const results = {
     processed: 0,
     replied: 0,
@@ -109,77 +92,74 @@ serve(async (req) => {
     failed: 0,
     errors: [] as string[],
   };
-  
+
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = req.body || {};
     const shadowMode = body.shadowMode || false;
     const manualRun = body.manual || false;
-    
-    console.log(`Starting reply cron job - Shadow mode: ${shadowMode}, Manual: ${manualRun}`);
-    
-    client = await getMongoClient();
-    const db = client.database('replybot');
+
+    console.log(`Starting reply job - Shadow: ${shadowMode}, Manual: ${manualRun}`);
+
+    const client = await getMongoClient();
+    const db = client.db('replybot');
     const pagesCollection = db.collection('pages');
     const commentsCollection = db.collection('comments');
     const settingsCollection = db.collection('settings');
-    
+    const runsCollection = db.collection('runs');
+
     // Get global settings
-    const settings = await settingsCollection.findOne({ type: 'global' }) || {};
-    const maxRepliesPerRun = settings.maxRepliesPerRun || 100;
-    const minDelay = settings.minDelay || 5;
-    const maxDelay = settings.maxDelay || 20;
-    
+    const settings = (await settingsCollection.findOne({ type: 'global' })) || {};
+    const maxRepliesPerRun = (settings.maxRepliesPerRun as number) || 100;
+    const minDelay = (settings.minDelay as number) || 5;
+    const maxDelay = (settings.maxDelay as number) || 20;
+
     // Check global pause
     if (settings.globalPause && !manualRun) {
       console.log('Global pause is active, skipping run');
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'Skipped due to global pause',
-        results 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse(res, { success: true, message: 'Skipped due to global pause', results });
     }
-    
-    // Get all active pages
+
+    // Get active pages
     const pages = await pagesCollection.find({ status: 'active', autoReply: true }).toArray();
     console.log(`Found ${pages.length} active pages with auto-reply enabled`);
-    
+
     let totalReplies = 0;
-    
+
     for (const page of pages) {
       if (totalReplies >= maxRepliesPerRun) {
         console.log(`Reached max replies limit (${maxRepliesPerRun}), stopping`);
         break;
       }
-      
+
       console.log(`Processing page: ${page.name} (${page.pageId})`);
-      
-      // Get pending comments for this page
-      const pendingComments = await commentsCollection.find({
-        pageId: page.pageId,
-        status: 'pending',
-        createdTime: { $gte: new Date(page.activatedAt || 0) }, // Only comments after activation
-      }).toArray();
-      
+
+      // Get pending comments
+      const pendingComments = await commentsCollection
+        .find({
+          pageId: page.pageId,
+          status: 'pending',
+          createdTime: { $gte: new Date(page.activatedAt || 0) },
+        })
+        .toArray();
+
       console.log(`Found ${pendingComments.length} pending comments for ${page.name}`);
-      
-      // Track users we've replied to per post (one reply per user per post)
+
+      // Track replied users per post
       const repliedUsers = new Map<string, Set<string>>();
-      
+
       for (const comment of pendingComments) {
         if (totalReplies >= maxRepliesPerRun) break;
-        
+
         results.processed++;
-        
+
         try {
-          // Skip if already replied to this user on this post
-          const postUserKey = `${comment.postId}`;
-          if (!repliedUsers.has(postUserKey)) {
-            repliedUsers.set(postUserKey, new Set());
+          // Skip if already replied to user on this post
+          const postKey = comment.postId as string;
+          if (!repliedUsers.has(postKey)) {
+            repliedUsers.set(postKey, new Set());
           }
-          
-          if (repliedUsers.get(postUserKey)!.has(comment.fromId)) {
+
+          if (repliedUsers.get(postKey)!.has(comment.fromId as string)) {
             await commentsCollection.updateOne(
               { _id: comment._id },
               { $set: { status: 'skipped', skipReason: 'Already replied to user on this post' } }
@@ -187,71 +167,70 @@ serve(async (req) => {
             results.skipped++;
             continue;
           }
-          
+
           // Determine reply type
-          const isShort = isShortComment(comment.message, 
-            settings.shortCommentThresholdWords || 6,
-            settings.shortCommentThresholdChars || 40
+          const isShort = isShortComment(
+            comment.message as string,
+            (settings.shortCommentThresholdWords as number) || 6,
+            (settings.shortCommentThresholdChars as number) || 40
           );
-          
+
           let replyMessage: string;
           let replyType: string;
-          
+
           if (isShort) {
             replyMessage = getEmojiReply();
             replyType = 'emoji';
           } else {
-            replyMessage = await generateAIReply(comment.message, settings);
+            replyMessage = await generateAIReply(comment.message as string, settings);
             replyType = 'ai';
           }
-          
-          console.log(`Generated ${replyType} reply for comment ${comment.commentId}: ${replyMessage.substring(0, 50)}...`);
-          
+
+          console.log(`Generated ${replyType} reply for ${comment.commentId}: ${replyMessage.substring(0, 50)}...`);
+
           let replyCommentId = null;
-          
+
           if (!shadowMode) {
-            // Post the reply to Facebook
-            replyCommentId = await postReply(page.accessToken, comment.commentId, replyMessage);
+            replyCommentId = await postReply(page.accessToken as string, comment.commentId as string, replyMessage);
             console.log(`Posted reply ${replyCommentId}`);
           } else {
             console.log('[SHADOW MODE] Would have posted reply');
           }
-          
+
           // Update comment status
           await commentsCollection.updateOne(
             { _id: comment._id },
-            { 
-              $set: { 
+            {
+              $set: {
                 status: 'replied',
                 replyType,
                 replyMessage,
                 replyCommentId,
                 repliedAt: new Date(),
                 shadowMode,
-              } 
+              },
             }
           );
-          
-          repliedUsers.get(postUserKey)!.add(comment.fromId);
+
+          repliedUsers.get(postKey)!.add(comment.fromId as string);
           totalReplies++;
           results.replied++;
-          
+
           // Random delay between replies
           await randomDelay(minDelay, maxDelay);
-          
-        } catch (error: unknown) {
+        } catch (error) {
           console.error(`Error processing comment ${comment.commentId}:`, error);
           const errMessage = error instanceof Error ? error.message : 'Unknown error';
           results.failed++;
           results.errors.push(`${comment.commentId}: ${errMessage}`);
-          
+
           await commentsCollection.updateOne(
             { _id: comment._id },
             { $set: { status: 'failed', skipReason: errMessage } }
           );
-          
-          // Check if we should auto-pause due to errors
-          if (results.failed >= (settings.errorThreshold || 5)) {
+
+          // Auto-pause on excessive errors
+          if (results.failed >= ((settings.errorThreshold as number) || 5)) {
             console.log('Error threshold reached, auto-pausing page');
             await pagesCollection.updateOne(
               { _id: page._id },
@@ -262,38 +241,19 @@ serve(async (req) => {
         }
       }
     }
-    
+
     // Log the run
-    const runsCollection = db.collection('runs');
     await runsCollection.insertOne({
       timestamp: new Date(),
       shadowMode,
       manualRun,
       results,
     });
-    
-    console.log('Cron job completed:', results);
-    
-    return new Response(JSON.stringify({ 
-      success: true, 
-      results 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-    
-  } catch (error: unknown) {
-    console.error('Cron job error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ 
-      error: message,
-      results 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } finally {
-    if (client) {
-      client.close();
-    }
+
+    console.log('Job completed:', results);
+    return jsonResponse(res, { success: true, results });
+  } catch (error) {
+    console.error('Process replies error:', error);
+    return errorResponse(res, error instanceof Error ? error.message : 'Unknown error');
   }
-});
+}
