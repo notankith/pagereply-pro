@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Clock, AlertTriangle } from 'lucide-react';
+import { Play, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useTriggerReplies, useGlobalStats } from '@/hooks/useApi';
+import { toast } from 'sonner';
 
 export function NextCronCard() {
   const [timeLeft, setTimeLeft] = useState({ hours: 4, minutes: 23, seconds: 45 });
+  const { data: stats } = useGlobalStats();
+  const triggerReplies = useTriggerReplies();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -29,6 +33,15 @@ export function NextCronCard() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const handleRunNow = async () => {
+    try {
+      const result = await triggerReplies.mutateAsync(false);
+      toast.success(`Processed ${result.results?.replied || 0} replies`);
+    } catch (error) {
+      toast.error('Failed to run process');
+    }
+  };
 
   const formatNumber = (n: number) => n.toString().padStart(2, '0');
 
@@ -62,13 +75,22 @@ export function NextCronCard() {
       </div>
 
       <div className="space-y-3">
-        <Button variant="glow" className="w-full">
-          <Play className="w-4 h-4" />
-          Run Now
+        <Button 
+          variant="glow" 
+          className="w-full"
+          onClick={handleRunNow}
+          disabled={triggerReplies.isPending}
+        >
+          {triggerReplies.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+          {triggerReplies.isPending ? 'Processing...' : 'Run Now'}
         </Button>
         <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
           <AlertTriangle className="w-3 h-3" />
-          <span>52 pending comments across 4 pages</span>
+          <span>{stats?.pending || 0} pending comments across {stats?.activePages || 0} pages</span>
         </div>
       </div>
     </div>
