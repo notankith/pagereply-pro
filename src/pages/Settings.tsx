@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,14 +11,17 @@ import {
   Save, 
   Shield, 
   Clock, 
-  MessageSquare, 
-  AlertTriangle,
-  Zap,
-  Bot
+  MessageSquare,
+  Bot,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSettings, useUpdateSettings } from '@/hooks/useApi';
 
 export default function Settings() {
+  const { data: savedSettings, isLoading } = useSettings();
+  const updateSettings = useUpdateSettings();
+  
   const [settings, setSettings] = useState({
     maxRepliesPerRun: 100,
     minDelay: 5,
@@ -32,9 +35,30 @@ export default function Settings() {
     aiTone: "You are a friendly and helpful social media manager. Respond to comments in a warm, professional manner. Keep responses concise but engaging. Never be defensive or argumentative."
   });
 
-  const handleSave = () => {
-    toast.success('Settings saved successfully');
+  useEffect(() => {
+    if (savedSettings) {
+      setSettings(prev => ({ ...prev, ...savedSettings }));
+    }
+  }, [savedSettings]);
+
+  const handleSave = async () => {
+    try {
+      await updateSettings.mutateAsync(settings);
+      toast.success('Settings saved successfully');
+    } catch (error) {
+      toast.error('Failed to save settings');
+    }
   };
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-screen">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -60,7 +84,7 @@ export default function Settings() {
                   <Input 
                     type="number"
                     value={settings.shortCommentThresholdWords}
-                    onChange={(e) => setSettings(s => ({ ...s, shortCommentThresholdWords: parseInt(e.target.value) }))}
+                    onChange={(e) => setSettings(s => ({ ...s, shortCommentThresholdWords: parseInt(e.target.value) || 6 }))}
                   />
                   <p className="text-xs text-muted-foreground">Comments with ≤ this many words get emoji replies</p>
                 </div>
@@ -69,7 +93,7 @@ export default function Settings() {
                   <Input 
                     type="number"
                     value={settings.shortCommentThresholdChars}
-                    onChange={(e) => setSettings(s => ({ ...s, shortCommentThresholdChars: parseInt(e.target.value) }))}
+                    onChange={(e) => setSettings(s => ({ ...s, shortCommentThresholdChars: parseInt(e.target.value) || 40 }))}
                   />
                   <p className="text-xs text-muted-foreground">OR comments with &lt; this many characters</p>
                 </div>
@@ -107,14 +131,14 @@ export default function Settings() {
                   <Input 
                     type="number"
                     value={settings.minDelay}
-                    onChange={(e) => setSettings(s => ({ ...s, minDelay: parseInt(e.target.value) }))}
+                    onChange={(e) => setSettings(s => ({ ...s, minDelay: parseInt(e.target.value) || 5 }))}
                     className="w-24"
                   />
                   <span className="text-muted-foreground">to</span>
                   <Input 
                     type="number"
                     value={settings.maxDelay}
-                    onChange={(e) => setSettings(s => ({ ...s, maxDelay: parseInt(e.target.value) }))}
+                    onChange={(e) => setSettings(s => ({ ...s, maxDelay: parseInt(e.target.value) || 20 }))}
                     className="w-24"
                   />
                 </div>
@@ -191,7 +215,7 @@ export default function Settings() {
                   <Input 
                     type="number"
                     value={settings.errorThreshold}
-                    onChange={(e) => setSettings(s => ({ ...s, errorThreshold: parseInt(e.target.value) }))}
+                    onChange={(e) => setSettings(s => ({ ...s, errorThreshold: parseInt(e.target.value) || 5 }))}
                     className="w-16 h-8"
                     disabled={!settings.autoPauseOnErrors}
                   />
@@ -207,8 +231,12 @@ export default function Settings() {
 
           {/* Save Button */}
           <div className="flex justify-end">
-            <Button size="lg" onClick={handleSave}>
-              <Save className="w-4 h-4 mr-2" />
+            <Button size="lg" onClick={handleSave} disabled={updateSettings.isPending}>
+              {updateSettings.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
               Save Settings
             </Button>
           </div>

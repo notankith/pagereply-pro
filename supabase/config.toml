@@ -1,1 +1,10 @@
 project_id = "fpndzvcopdstqlwvuwcq"
+
+[functions.fb-webhook]
+verify_jwt = false
+
+[functions.process-replies]
+verify_jwt = false
+
+[functions.api]
+verify_jwt = false
