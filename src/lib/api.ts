@@ -1,4 +1,17 @@
-const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
+// API configuration for Vercel deployment
+// In development: uses relative /api paths (proxied by Vite)
+// In production: uses VITE_API_URL or relative paths
+
+const getApiBase = () => {
+  // For production Vercel deployment, use relative paths or configured URL
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // Default to relative paths (works with Vercel)
+  return '/api';
+};
+
+const API_BASE = getApiBase();
 
 export interface PageStats {
   comments: number;
@@ -65,7 +78,7 @@ export interface Settings {
 }
 
 async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}?action=${endpoint}`, {
+  const response = await fetch(`${API_BASE}/${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -98,7 +111,7 @@ export const pagesApi = {
     }),
   
   delete: (id: string) =>
-    apiRequest<{ success: boolean }>(`pages&id=${id}`, {
+    apiRequest<{ success: boolean }>(`pages?id=${id}`, {
       method: 'DELETE',
     }),
 };
@@ -106,16 +119,16 @@ export const pagesApi = {
 // Stats API
 export const statsApi = {
   getGlobal: () => apiRequest<GlobalStats>('stats'),
-  getByPage: (pageId: string) => apiRequest<GlobalStats>(`stats&pageId=${pageId}`),
+  getByPage: (pageId: string) => apiRequest<GlobalStats>(`stats?pageId=${pageId}`),
 };
 
 // Activity API
 export const activityApi = {
   getRecent: (limit = 50, status?: string, pageId?: string) => {
-    let endpoint = `activity&limit=${limit}`;
-    if (status) endpoint += `&status=${status}`;
-    if (pageId) endpoint += `&pageId=${pageId}`;
-    return apiRequest<Comment[]>(endpoint);
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.append('status', status);
+    if (pageId) params.append('pageId', pageId);
+    return apiRequest<Comment[]>(`activity?${params}`);
   },
 };
 
@@ -132,23 +145,20 @@ export const settingsApi = {
 
 // Runs API
 export const runsApi = {
-  getRecent: (limit = 10) => apiRequest<any[]>(`runs&limit=${limit}`),
+  getRecent: (limit = 10) => apiRequest<unknown[]>(`runs?limit=${limit}`),
 };
 
 // Chart data API
 export const chartApi = {
-  getData: (days = 7) => apiRequest<any[]>(`chart-data&days=${days}`),
+  getData: (days = 7) => apiRequest<unknown[]>(`chart-data?days=${days}`),
 };
 
 // Process replies (manual trigger)
 export const triggerProcessReplies = async (shadowMode = false) => {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-replies`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manual: true, shadowMode }),
-    }
-  );
+  const response = await fetch(`${API_BASE}/process-replies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manual: true, shadowMode }),
+  });
   return response.json();
 };
