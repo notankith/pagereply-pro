@@ -1,13 +1,12 @@
 // API configuration for Vercel deployment
-// In development: uses relative /api paths (proxied by Vite)
-// In production: uses VITE_API_URL or relative paths
+// Set VITE_API_URL to your Vercel deployment URL (e.g., https://your-app.vercel.app/api)
 
 const getApiBase = () => {
-  // For production Vercel deployment, use relative paths or configured URL
+  // Use configured API URL or default to relative paths
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // Default to relative paths (works with Vercel)
+  // For Lovable preview, this won't work - you need to set VITE_API_URL
   return '/api';
 };
 
