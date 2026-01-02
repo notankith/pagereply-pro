@@ -7,6 +7,7 @@ import {
   BarChart3, 
   Settings, 
   Zap,
+  MessageSquare,
   ChevronLeft,
   ChevronRight,
   Shield,
@@ -26,6 +27,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Overview', icon: LayoutDashboard, href: '/' },
   { label: 'Pages', icon: FileStack, href: '/pages' },
+    { label: 'Manual Reply', icon: MessageSquare, href: '/manual-reply' },
   { label: 'Insights', icon: BarChart3, href: '/insights' },
   { label: 'Activity', icon: Activity, href: '/activity' },
   { label: 'Settings', icon: Settings, href: '/settings' },

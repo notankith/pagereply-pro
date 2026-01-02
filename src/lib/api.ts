@@ -1,12 +1,13 @@
 // API configuration for Vercel deployment
-// Set VITE_API_URL to your Vercel deployment URL (e.g., https://your-app.vercel.app/api)
+// In development: uses relative /api paths (proxied by Vite)
+// In production: uses VITE_API_URL or relative paths
 
 const getApiBase = () => {
-  // Use configured API URL or default to relative paths
+  // For production Vercel deployment, use relative paths or configured URL
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // For Lovable preview, this won't work - you need to set VITE_API_URL
+  // Default to relative paths (works with Vercel)
   return '/api';
 };
 
@@ -158,6 +159,24 @@ export const triggerProcessReplies = async (shadowMode = false) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ manual: true, shadowMode }),
+  });
+  return response.json();
+};
+
+// Manual process replies with targeting options
+export const manualProcessReplies = async (opts: { pageId?: string; postId?: string; limit?: number; shadowMode?: boolean; contentType?: string; accessToken?: string } = {}) => {
+  const response = await fetch(`${API_BASE}/process-replies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manual: true,
+      pageId: opts.pageId,
+      postId: opts.postId,
+      limit: opts.limit || 100,
+      shadowMode: opts.shadowMode || false,
+      contentType: opts.contentType || 'post',
+      accessToken: opts.accessToken,
+    }),
   });
   return response.json();
 };

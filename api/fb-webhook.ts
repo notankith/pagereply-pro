@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getMongoClient } from './lib/mongodb.js';
 import { handleCors, jsonResponse, errorResponse } from './lib/cors.js';
 
+const GRAPH = process.env.FB_GRAPH_URL || 'https://graph.facebook.com/v24.0';
+
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || 'replybot_verify_token';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -71,6 +73,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (existingComment) {
               console.log(`Comment ${value.comment_id} already exists, skipping`);
               continue;
+            }
+
+            // Check whether the page has already replied to this comment via Graph API.
+            // If so, store as skipped to avoid double-reply across manual/auto systems.
+            try {
+              const token = page.accessToken as string | undefined;
+              if (token) {
+                const url = `${GRAPH}/${value.comment_id}/comments?fields=from&access_token=${encodeURIComponent(token)}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                  const data = await resp.json().catch(() => ({}));
+                  const replies = data.data || [];
+                  const pageReplied = replies.some((r: any) => r.from && r.from.id === page.pageId);
+                  if (pageReplied) {
+                    const comment = {
+                      commentId: value.comment_id,
+                      postId: value.post_id,
+                      pageId: pageId,
+                      fromId: value.from.id,
+                      fromName: value.from.name || 'Unknown',
+                      message: value.message || '',
+                      createdTime: new Date(value.created_time * 1000),
+                      receivedAt: new Date(),
+                      status: 'skipped',
+                      replyType: null,
+                      replyCommentId: null,
+                      repliedAt: null,
+                      skipReason: 'Already replied by page',
+                    };
+                    await commentsCollection.insertOne(comment);
+                    console.log(`Stored comment ${value.comment_id} as skipped (page already replied)`);
+                    continue;
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Error checking existing replies for comment', value.comment_id, err);
+              // fall through and store as pending so it can be processed later
             }
 
             // Store the comment

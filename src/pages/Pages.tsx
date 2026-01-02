@@ -35,7 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { usePages, useCreatePage, useUpdatePage, useDeletePage } from '@/hooks/useApi';
+import { usePages, useCreatePage, useUpdatePage, useDeletePage, useManualProcessReplies } from '@/hooks/useApi';
 import { toast } from 'sonner';
 import type { FacebookPage } from '@/lib/api';
 
@@ -110,6 +110,9 @@ export default function Pages() {
       toast.error('Failed to disconnect page');
     }
   };
+
+  // Manual reply functionality moved to a dedicated Manual Reply tab.
+  // Pages view now only manages page-level configuration and status.
 
   return (
     <DashboardLayout>
@@ -274,6 +277,9 @@ export default function Pages() {
                     disabled={page.status === 'paused'}
                     className="data-[state=checked]:bg-success"
                   />
+                </div>
+                <div className="mt-4 p-3 bg-secondary/5 rounded-lg">
+                  <p className="text-sm">Manual reply controls moved to the <a href="/manual-reply" className="text-primary underline">Manual Reply</a> tab.</p>
                 </div>
               </div>
             ))}

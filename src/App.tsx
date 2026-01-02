@@ -8,6 +8,7 @@ import Pages from "./pages/Pages";
 import Insights from "./pages/Insights";
 import Activity from "./pages/Activity";
 import Settings from "./pages/Settings";
+import ManualReply from "./pages/ManualReply";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +22,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/pages" element={<Pages />} />
+          <Route path="/manual-reply" element={<ManualReply />} />
           <Route path="/insights" element={<Insights />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/settings" element={<Settings />} />

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pagesApi, statsApi, activityApi, settingsApi, runsApi, chartApi, triggerProcessReplies } from '@/lib/api';
+import { pagesApi, statsApi, activityApi, settingsApi, runsApi, chartApi, triggerProcessReplies, manualProcessReplies } from '@/lib/api';
 import type { FacebookPage, Settings } from '@/lib/api';
 
 // Stats hooks
@@ -100,6 +100,20 @@ export function useTriggerReplies() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (shadowMode: boolean) => triggerProcessReplies(shadowMode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+      queryClient.invalidateQueries({ queryKey: ['runs'] });
+    },
+  });
+}
+
+// Manual process replies hook (scan or single post)
+export function useManualProcessReplies() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (opts: { pageId?: string; postId?: string; limit?: number; shadowMode?: boolean }) =>
+      manualProcessReplies(opts),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['activity'] });
