@@ -160,7 +160,13 @@ export const triggerProcessReplies = async (shadowMode = false) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ manual: true, shadowMode }),
   });
-  return response.json();
+  
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || 'Request failed');
+  }
 };
 
 // Manual process replies with targeting options
@@ -178,5 +184,11 @@ export const manualProcessReplies = async (opts: { pageId?: string; postId?: str
       accessToken: opts.accessToken,
     }),
   });
-  return response.json();
+  
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || 'Request failed');
+  }
 };
