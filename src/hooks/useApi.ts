@@ -112,8 +112,14 @@ export function useTriggerReplies() {
 export function useManualProcessReplies() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (opts: { pageId?: string; postId?: string; limit?: number; shadowMode?: boolean }) =>
-      manualProcessReplies(opts),
+    mutationFn: (opts: { 
+      pageId?: string; 
+      postId?: string; 
+      limit?: number; 
+      shadowMode?: boolean;
+      contentType?: 'post' | 'reel';
+      accessToken?: string;
+    }) => manualProcessReplies(opts),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['activity'] });
