@@ -92,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     replied: 0,
     skipped: 0,
     failed: 0,
+    totalCommentsFound: 0,
     errors: [] as string[],
   };
   const rawResponses: Array<{ endpoint: string; status?: number; body: unknown }> = [];
@@ -167,26 +168,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     async function getComments(postId: string, accessToken: string) {
-      // Include nested comments info to more reliably detect if the page already replied
-      const url = `${GRAPH}/${postId}/comments?filter=stream&fields=id,message,from,comments.limit(10){from}&limit=500&access_token=${encodeURIComponent(
+      // Fetch ALL comments using pagination
+      const allComments: any[] = [];
+      let url = `${GRAPH}/${postId}/comments?filter=stream&fields=id,message,from,comments.limit(10){from}&limit=100&access_token=${encodeURIComponent(
         accessToken || ''
       )}`;
-      const res = await fetch(url);
-      const text = await res.text().catch(() => '');
-      if (!res.ok) {
-        let body: unknown = text;
-        try { body = JSON.parse(text); } catch {};
-        rawResponses.push({ endpoint: url, status: res.status, body });
-        results.errors.push(`getComments ${postId}: ${res.status}`);
-        console.error('getComments failed', postId, res.status, text);
-        return [];
+      
+      while (url) {
+        const res = await fetch(url);
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          let body: unknown = text;
+          try { body = JSON.parse(text); } catch {};
+          rawResponses.push({ endpoint: url, status: res.status, body });
+          results.errors.push(`getComments ${postId}: ${res.status}`);
+          console.error('getComments failed', postId, res.status, text);
+          break;
+        }
+        const data = JSON.parse(text || '{}');
+        if (!data || !data.data) {
+          rawResponses.push({ endpoint: url, status: res.status, body: data });
+          break;
+        }
+        allComments.push(...(data.data || []));
+        
+        // Check for next page
+        url = data.paging?.next || '';
       }
-      const data = JSON.parse(text || '{}');
-      if (!data || !data.data) {
-        rawResponses.push({ endpoint: url, status: res.status, body: data });
-        return [];
-      }
-      return data.data || [];
+      
+      console.log(`Fetched ${allComments.length} total comments for post ${postId}`);
+      return allComments;
     }
 
     async function alreadyReplied(commentId: string, pageId: string, accessToken: string) {
@@ -286,6 +297,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Always pass the page access token when fetching comments
           const comments = await getComments(postId as string, page.accessToken as string);
+          
+          // Track total comments found before processing
+          results.totalCommentsFound += comments.length;
+          console.log(`Post ${postId}: Found ${comments.length} comments (Total so far: ${results.totalCommentsFound})`);
 
           for (const c of comments) {
             if (totalReplies >= maxRepliesPerRun) break;

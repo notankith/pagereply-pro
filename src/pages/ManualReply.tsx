@@ -106,7 +106,16 @@ export default function ManualReply() {
         accessToken: accessToken || undefined 
       });
       
-      toast.success(`Scan completed: ${result?.processed || 0} comments processed`);
+      // Update results from API response
+      if (result?.results) {
+        setResults({
+          comments: result.results.totalCommentsFound || result.results.processed || 0,
+          replied: result.results.replied || 0,
+          pending: (result.results.totalCommentsFound || result.results.processed || 0) - (result.results.replied || 0) - (result.results.skipped || 0)
+        });
+      }
+      
+      toast.success(`Scan completed: ${result?.results?.totalCommentsFound || result?.processed || 0} comments found, ${result?.results?.replied || 0} replied`);
     } catch (err: any) {
       toast.error(err?.message || 'Scan failed');
       console.error('Scan error', err);
@@ -140,7 +149,16 @@ export default function ManualReply() {
         accessToken: accessToken || undefined 
       });
       
-      toast.success(`Reply completed: ${result?.processed || 0} comments processed`);
+      // Update results from API response
+      if (result?.results) {
+        setResults({
+          comments: result.results.totalCommentsFound || result.results.processed || 0,
+          replied: result.results.replied || 0,
+          pending: (result.results.totalCommentsFound || result.results.processed || 0) - (result.results.replied || 0) - (result.results.skipped || 0)
+        });
+      }
+      
+      toast.success(`Reply completed: ${result?.results?.totalCommentsFound || 0} comments found, ${result?.results?.replied || 0} replied`);
     } catch (err: any) {
       toast.error(err?.message || 'Reply failed');
       console.error('Single reply error', err);
